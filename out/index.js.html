@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>JSDoc: Source: index.js</title>
+
+    <script src="scripts/prettify/prettify.js"> </script>
+    <script src="scripts/prettify/lang-css.js"> </script>
+    <!--[if lt IE 9]>
+      <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <link type="text/css" rel="stylesheet" href="styles/prettify-tomorrow.css">
+    <link type="text/css" rel="stylesheet" href="styles/jsdoc-default.css">
+</head>
+
+<body>
+
+<div id="main">
+
+    <h1 class="page-title">Source: index.js</h1>
+
+    
+
+
+
+    
+    <section>
+        <article>
+            <pre class="prettyprint source linenums"><code>import { buildBabyjub }  from "circomlibjs";
+import { getCurveFromName, Scalar }  from "ffjavascript";
+import crypto from 'crypto';
+
+/**
+ * @typedef {Object} Point
+ * @property {bigint} x - The X coordinate.
+ * @property {bigint} y - The Y coordinate.
+ */
+
+/**
+ * @typedef {Object} KeyPair
+ * @property {bigint} privateKey - The private key.
+ * @property {Point} publicKey - The public key in uncompressed format, i.e a point on Baby Jubjub.
+ */
+
+/**
+ * @typedef {Object} EncryptedValue
+ * @property {Point} C1 - C1 is the first part of the ciphertext, a point in Baby Jubjub. Same notations as on {@link https://en.wikipedia.org/wiki/ElGamal_encryption|wikipedia}.
+ * @property {Point} C2 - C2 is the second part of the ciphertext, a point in Baby Jubjub. Same notations as on {@link https://en.wikipedia.org/wiki/ElGamal_encryption|wikipedia}.
+ * @property {bigint} randomness - randomness parameter. &lt;strong style="color: red;">Warning:&lt;/strong> should stay private, but we could use it as a private input in the circuits.
+ */
+
+const babyJub = await buildBabyjub();
+
+// Internal functions
+
+function _getRandomBigInt(maxBigInt) {
+    // Calculate the byte length
+    const byteLength = (maxBigInt.toString(16).length + 1) >> 1;
+    while (true) {
+        const buf = crypto.randomBytes(byteLength);
+        let num = BigInt('0x' + buf.toString('hex'));
+
+        if (num &lt;= maxBigInt) {
+            return num;
+        }
+    }
+}
+
+function _uint8ArrayToBigIntNoModP(arr) {
+    let result = 0n;
+    for (const byte of arr.reverse()) {
+        result = (result &lt;&lt; 8n) + BigInt(byte);
+    }
+    return result;
+}
+
+function _bigIntToUint8ArrayNoModP(bigIntValue) {
+    const result = new Uint8Array(32);
+    for (let i = 31; i >= 0; i--) {
+        result[i] = Number(bigIntValue &amp; 0xFFn);
+        bigIntValue >>= 8n;
+    }
+    return result.reverse();
+}
+
+//External functions of the library
+
+/**
+ * Converts a private key to its corresponding public key point on the Baby Jubjub curve.
+ *
+ * @param {bigint} privateKey - The private key. &lt;strong style="color: red;">Warning:&lt;/strong> should be a BigInt sampled randomly between 0 and l-1, where l is the order of the bigprime subgroup of Baby Jubjub. i.e l=2736030358979909402780800718157159386076813972158567259200215660948447373041
+ * @returns {Point} The public key point with x and y coordinates which corresponds to the private key.
+ */
+export function privateToPublicKey(privateKey){
+    const publicKeyPoint = babyJub.mulPointEscalar(babyJub.Base8,privateKey); // A point on Baby Jubjub : C = (CX, Cy)
+    return {"x":babyJub.F.toObject(publicKeyPoint[0]),
+            "y":babyJub.F.toObject(publicKeyPoint[1])}
+}
+
+/**
+ * Generates randomly a pair of private/public keys on Baby Jubjub.
+ *
+ * @returns {KeyPair} The generated private key and its associated uncompressed/unpacked public key.
+ */
+export function generatePrivateAndPublicKey() {
+    const max_value = BigInt('2736030358979909402780800718157159386076813972158567259200215660948447373041'); // max value should be l (https://eips.ethereum.org/EIPS/eip-2494), the order of the big subgroup to avoid modulo bias
+    const privateKey = _getRandomBigInt(max_value);
+    const publicKey = privateToPublicKey(privateKey);
+    return {"privateKey":privateKey, "publicKey":publicKey};
+}
+
+/**
+ * Encrypts a plaintext value between 0 and 2**40-1=1099511627775 for a specific publicKey. The returned ciphertext using ElGamal encryption is a pair of Baby Jubjub points (C1,C2).
+ *
+ * @param {Point} publicKey - The public key. &lt;strong style="color: red;">Warning:&lt;/strong> The developer must ensures that this point is a valid public key, i.e a point on the big prime subgroup of Baby Jubjub.
+ * @param {number} plaintext - The plaintext. &lt;strong style="color: red;">Warning:&lt;/strong> should be a number between 0 and 2**40-1=1099511627775 if you want to be able to decrypt it later using the baby-step giant-step algorithm.
+ * @returns {EncryptedValue} The encryption of plaintext. (C1,C2) is the ciphertext composed of two Baby Jubjub points, and randomness is the big integer used as randomness during encryption which should stay private for the encrypter.
+ */
+export function elgamalEncrypt(publicKey, plaintext) {  
+        // Check if it's a number and an integer in uint40 range
+        if (typeof plaintext === 'number' &amp;&amp; Number.isInteger(plaintext) &amp;&amp; plaintext >= 0 &amp;&amp; plaintext &lt;= 1099511627775) {
+            const max_value = BigInt('2736030358979909402780800718157159386076813972158567259200215660948447373041'); // max value should be l (https://eips.ethereum.org/EIPS/eip-2494), the order of the big subgroup to avoid modulo bias
+            const randomness = _getRandomBigInt(max_value);
+            const C1P = babyJub.mulPointEscalar(babyJub.Base8,randomness);
+            const plain_embedded = babyJub.mulPointEscalar(babyJub.Base8,plaintext);
+            const shared_secret = babyJub.mulPointEscalar([babyJub.F.e(publicKey.x),babyJub.F.e(publicKey.y)],randomness);
+            const C2P = babyJub.addPoint(plain_embedded,shared_secret);
+            const C1 = {"x":babyJub.F.toObject(C1P[0]),
+                        "y":babyJub.F.toObject(C1P[1])};
+            const C2 = {"x":babyJub.F.toObject(C2P[0]),
+                        "y":babyJub.F.toObject(C2P[1])};
+            return {"C1":C1, "C2": C2, "randomness": randomness}; // randomness should stay private, but we need it as private inputs in the circuit
+        }
+            else {
+                throw new Error("Plain value most be an integer in uint40 range");
+            }
+}
+
+/**
+ * Decrypts the ciphertext in an embedded form, i.e as a point on the Baby Jubjub curve defined by G^(plaintext), G is the generator point. You would still need to appy the Baby-step Giant-step algorithm to get back the original unencrypted value.
+ *
+ * @param {bigint} privateKey - The privatekey key.
+ * @param {Point} C1 - the first part of the ciphertext, a point in Baby Jubjub. Same notations as on {@link https://en.wikipedia.org/wiki/ElGamal_encryption|wikipedia}.
+ * @param {Point} C2 - the second part of the ciphertext, a point in Baby Jubjub. Same notations as on {@link https://en.wikipedia.org/wiki/ElGamal_encryption|wikipedia}.
+ * @returns {Point} The decrypted value in embedded form.
+ */
+export function elgamalDecryptEmbedded(privateKey, C1, C2) {
+    const shared_secret = babyJub.mulPointEscalar([babyJub.F.e(C1.x),babyJub.F.e(C1.y)],privateKey);
+    const shared_secret_inverse = babyJub.mulPointEscalar(shared_secret,2736030358979909402780800718157159386076813972158567259200215660948447373040n); // Note : this BigInt is equal to l-1, this equivalent here to -1, to take the inverse of shared_secret, because mulPointEscalar only supports positive values for the second argument
+    const plain_embedded = babyJub.addPoint([babyJub.F.e(C2.x),babyJub.F.e(C2.y)],shared_secret_inverse);
+    return {"x":babyJub.F.toObject(plain_embedded[0]),
+            "y":babyJub.F.toObject(plain_embedded[1])};
+}
+
+/**
+ * Adds two points on the Baby Jubjub curve. Could be used for homomorphic addition of ciphertexts, eg : (C1,C2)+(C1',C2')=((C1+C1'),(C2+C2'))
+ *
+ * @param {Point} P1 - First point. &lt;strong style="color: red;">Warning:&lt;/strong> The developer must ensures that this point is on the Baby Jubjub curve.
+ * @param {Point} P2 - Second point. &lt;strong style="color: red;">Warning:&lt;/strong> The developer must ensures that this point is on the Baby Jubjub curve.
+ * @returns {Point} The resulting point from addition, i.e P1+P2.
+ */
+export function addPoints(P1, P2) { // Used for (homomorphic) addition of baby jubjub (encrypted) points
+    const Psum = babyJub.addPoint([babyJub.F.e(P1.x),babyJub.F.e(P1.y)],[babyJub.F.e(P2.x),babyJub.F.e(P2.y)]);
+    return {"x":babyJub.F.toObject(Psum[0]),
+            "y":babyJub.F.toObject(Psum[1])};
+}
+
+/**
+ * Packs a public key, from uncompressed form (i.e a point on the big subgroup of Baby Jubjub) to a compressed form (i.e a BigInt)
+ *
+ * @param {Point} publicKey - The uncompressed/unpacked public key. &lt;strong style="color: red;">Warning:&lt;/strong> The developer must ensures that this point is on the Baby Jubjub curve.
+ * @returns {bigint} The resulting compressed/packed public key.
+ */
+export function packPoint(publicKey){
+    const packedPoint = babyJub.packPoint([babyJub.F.e(publicKey.x),babyJub.F.e(publicKey.y)]);
+    const packedPublicKey = _uint8ArrayToBigIntNoModP(packedPoint);
+    return packedPublicKey;
+}
+
+/**
+ * Unpacks a packed public key, this is the opposite of `packPoint`
+ *
+ * @param {bigint} packedPublicKey - The packed public key. &lt;strong style="color: red;">Warning:&lt;/strong> The developer must ensures that it is a valid public key.
+ * @returns {Point} The resulting compressed/packed public key.
+ */
+export function unpackPoint(packedPublicKey){
+    const unpackedPoint = babyJub.unpackPoint(_bigIntToUint8ArrayNoModP(packedPublicKey));
+    return {"x":babyJub.F.toObject(unpackedPoint[0]),
+            "y":babyJub.F.toObject(unpackedPoint[1])};
+}
+
+/**
+ * Converts a bigint to a string in hex format with 0s padded on the left if needed, to later cast it easily as a bytes32 in Solidity or Noir.
+ *
+ * @param {bigint} bigInt - The big integer. &lt;strong style="color: red;">Warning:&lt;/strong> The developer must ensures that it is a valid uint256/bytes32.
+ * @returns {string} The resulting hex string.
+ */
+export function bigintToBytes32(bigInt){
+    const max = (BigInt(2) ** BigInt(256));
+    if (bigInt >= max || bigInt &lt;0) {
+        throw new Error("The value is not between 0 and 2**256 - 1.");
+    }
+    return '0x' + ((bigInt).toString(16)).padStart(64, '0');
+}
+//export function elgamalEncryptPacked
+//export function babyStepGiantStep</code></pre>
+        </article>
+    </section>
+
+
+
+
+</div>
+
+<nav>
+    <h2><a href="index.html">Home</a></h2><h3>Global</h3><ul><li><a href="global.html#addPoints">addPoints</a></li><li><a href="global.html#bigintToBytes32">bigintToBytes32</a></li><li><a href="global.html#elgamalDecryptEmbedded">elgamalDecryptEmbedded</a></li><li><a href="global.html#elgamalEncrypt">elgamalEncrypt</a></li><li><a href="global.html#generatePrivateAndPublicKey">generatePrivateAndPublicKey</a></li><li><a href="global.html#packPoint">packPoint</a></li><li><a href="global.html#privateToPublicKey">privateToPublicKey</a></li><li><a href="global.html#unpackPoint">unpackPoint</a></li></ul>
+</nav>
+
+<br class="clear">
+
+<footer>
+    Documentation generated by <a href="https://github.com/jsdoc/jsdoc">JSDoc 4.0.2</a> on Fri Oct 27 2023 12:02:19 GMT+0200 (heure d’été d’Europe centrale)
+</footer>
+
+<script> prettyPrint(); </script>
+<script src="scripts/linenumber.js"> </script>
+</body>
+</html>
