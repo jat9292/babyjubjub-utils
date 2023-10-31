@@ -27,8 +27,10 @@
     <section>
         <article>
             <pre class="prettyprint source linenums"><code>import { buildBabyjub }  from "circomlibjs";
-import { getCurveFromName, Scalar }  from "ffjavascript";
-import crypto from 'crypto';
+import crypto from "crypto";
+import { fileURLToPath } from 'url';
+import { dirname, resolve } from 'path';
+    
 
 /**
  * @typedef {Object} Point
@@ -46,12 +48,19 @@ import crypto from 'crypto';
  * @typedef {Object} EncryptedValue
  * @property {Point} C1 - C1 is the first part of the ciphertext, a point in Baby Jubjub. Same notations as on {@link https://en.wikipedia.org/wiki/ElGamal_encryption|wikipedia}.
  * @property {Point} C2 - C2 is the second part of the ciphertext, a point in Baby Jubjub. Same notations as on {@link https://en.wikipedia.org/wiki/ElGamal_encryption|wikipedia}.
- * @property {bigint} randomness - randomness parameter. &lt;strong style="color: red;">Warning:&lt;/strong> should stay private, but we could use it as a private input in the circuits.
+ * @property {bigint} randomness - randomness parameter. &lt;strong style="color: red;">Warning:&lt;/strong> should stay private and owned by the encryptor, but he could use it as a private input in the circuits.
  */
 
-const babyJub = await buildBabyjub();
 
 // Internal functions
+let babyJub;
+
+async function getBabyJub() {
+  if (!babyJub) {
+    babyJub = await buildBabyjub();
+  }
+  return babyJub;
+}
 
 function _getRandomBigInt(maxBigInt) {
     // Calculate the byte length
@@ -91,7 +100,8 @@ function _bigIntToUint8ArrayNoModP(bigIntValue) {
  * @param {bigint} privateKey - The private key. &lt;strong style="color: red;">Warning:&lt;/strong> should be a BigInt sampled randomly between 0 and l-1, where l is the order of the bigprime subgroup of Baby Jubjub. i.e l=2736030358979909402780800718157159386076813972158567259200215660948447373041
  * @returns {Point} The public key point with x and y coordinates which corresponds to the private key.
  */
-export function privateToPublicKey(privateKey){
+export async function privateToPublicKey(privateKey){
+    const babyJub = await getBabyJub();
     const publicKeyPoint = babyJub.mulPointEscalar(babyJub.Base8,privateKey); // A point on Baby Jubjub : C = (CX, Cy)
     return {"x":babyJub.F.toObject(publicKeyPoint[0]),
             "y":babyJub.F.toObject(publicKeyPoint[1])}
@@ -102,10 +112,10 @@ export function privateToPublicKey(privateKey){
  *
  * @returns {KeyPair} The generated private key and its associated uncompressed/unpacked public key.
  */
-export function generatePrivateAndPublicKey() {
+export async function generatePrivateAndPublicKey() {
     const max_value = BigInt('2736030358979909402780800718157159386076813972158567259200215660948447373041'); // max value should be l (https://eips.ethereum.org/EIPS/eip-2494), the order of the big subgroup to avoid modulo bias
     const privateKey = _getRandomBigInt(max_value);
-    const publicKey = privateToPublicKey(privateKey);
+    const publicKey = await privateToPublicKey(privateKey);
     return {"privateKey":privateKey, "publicKey":publicKey};
 }
 
@@ -114,37 +124,40 @@ export function generatePrivateAndPublicKey() {
  *
  * @param {Point} publicKey - The public key. &lt;strong style="color: red;">Warning:&lt;/strong> The developer must ensures that this point is a valid public key, i.e a point on the big prime subgroup of Baby Jubjub.
  * @param {number} plaintext - The plaintext. &lt;strong style="color: red;">Warning:&lt;/strong> should be a number between 0 and 2**40-1=1099511627775 if you want to be able to decrypt it later using the baby-step giant-step algorithm.
- * @returns {EncryptedValue} The encryption of plaintext. (C1,C2) is the ciphertext composed of two Baby Jubjub points, and randomness is the big integer used as randomness during encryption which should stay private for the encrypter.
+ * @returns {EncryptedValue} The encryption of plaintext. (C1,C2) is the ciphertext composed of two Baby Jubjub points, and randomness is the big integer used as randomness during encryption which should stay private for the encryptor.
  */
-export function elgamalEncrypt(publicKey, plaintext) {  
-        // Check if it's a number and an integer in uint40 range
-        if (typeof plaintext === 'number' &amp;&amp; Number.isInteger(plaintext) &amp;&amp; plaintext >= 0 &amp;&amp; plaintext &lt;= 1099511627775) {
-            const max_value = BigInt('2736030358979909402780800718157159386076813972158567259200215660948447373041'); // max value should be l (https://eips.ethereum.org/EIPS/eip-2494), the order of the big subgroup to avoid modulo bias
-            const randomness = _getRandomBigInt(max_value);
-            const C1P = babyJub.mulPointEscalar(babyJub.Base8,randomness);
-            const plain_embedded = babyJub.mulPointEscalar(babyJub.Base8,plaintext);
-            const shared_secret = babyJub.mulPointEscalar([babyJub.F.e(publicKey.x),babyJub.F.e(publicKey.y)],randomness);
-            const C2P = babyJub.addPoint(plain_embedded,shared_secret);
-            const C1 = {"x":babyJub.F.toObject(C1P[0]),
-                        "y":babyJub.F.toObject(C1P[1])};
-            const C2 = {"x":babyJub.F.toObject(C2P[0]),
-                        "y":babyJub.F.toObject(C2P[1])};
-            return {"C1":C1, "C2": C2, "randomness": randomness}; // randomness should stay private, but we need it as private inputs in the circuit
+export async function elgamalEncrypt(publicKey, plaintext) {  
+    const babyJub = await getBabyJub();
+    // Check if it's a number and an integer in uint40 range
+    if (typeof plaintext === 'number' &amp;&amp; Number.isInteger(plaintext) &amp;&amp; plaintext >= 0 &amp;&amp; plaintext &lt;= 1099511627775) {
+        const max_value = BigInt('2736030358979909402780800718157159386076813972158567259200215660948447373041'); // max value should be l (https://eips.ethereum.org/EIPS/eip-2494), the order of the big subgroup to avoid modulo bias
+        const randomness = _getRandomBigInt(max_value);
+        const C1P = babyJub.mulPointEscalar(babyJub.Base8,randomness);
+        const plain_embedded = babyJub.mulPointEscalar(babyJub.Base8,plaintext);
+        const shared_secret = babyJub.mulPointEscalar([babyJub.F.e(publicKey.x),babyJub.F.e(publicKey.y)],randomness);
+        const C2P = babyJub.addPoint(plain_embedded,shared_secret);
+        const C1 = {"x":babyJub.F.toObject(C1P[0]),
+                    "y":babyJub.F.toObject(C1P[1])};
+        const C2 = {"x":babyJub.F.toObject(C2P[0]),
+                    "y":babyJub.F.toObject(C2P[1])};
+        return {"C1":C1, "C2": C2, "randomness": randomness}; // randomness should stay private, but we need it as private inputs in the circuit
+    }
+        else {
+            throw new Error("Plain value most be an integer in uint40 range");
         }
-            else {
-                throw new Error("Plain value most be an integer in uint40 range");
-            }
 }
 
 /**
- * Decrypts the ciphertext in an embedded form, i.e as a point on the Baby Jubjub curve defined by G^(plaintext), G is the generator point. You would still need to appy the Baby-step Giant-step algorithm to get back the original unencrypted value.
+ * Decrypts the ciphertext in an embedded form, i.e as a point on the Baby Jubjub curve defined by G^(plaintext), G is the generator point. 
+ * You would still need to appy the Baby-step Giant-step algorithm via the `compute_dlog` function, to get back the original unencrypted value.
  *
- * @param {bigint} privateKey - The privatekey key.
+ * @param {bigint} privateKey - The privatekey key. &lt;strong style="color: red;">Warning:&lt;/strong> Please make sure to use the correct private key, or else the decryption will lead to an incorrect result.
  * @param {Point} C1 - the first part of the ciphertext, a point in Baby Jubjub. Same notations as on {@link https://en.wikipedia.org/wiki/ElGamal_encryption|wikipedia}.
  * @param {Point} C2 - the second part of the ciphertext, a point in Baby Jubjub. Same notations as on {@link https://en.wikipedia.org/wiki/ElGamal_encryption|wikipedia}.
  * @returns {Point} The decrypted value in embedded form.
  */
-export function elgamalDecryptEmbedded(privateKey, C1, C2) {
+export async function elgamalDecryptEmbedded(privateKey, C1, C2) {
+    const babyJub = await getBabyJub();
     const shared_secret = babyJub.mulPointEscalar([babyJub.F.e(C1.x),babyJub.F.e(C1.y)],privateKey);
     const shared_secret_inverse = babyJub.mulPointEscalar(shared_secret,2736030358979909402780800718157159386076813972158567259200215660948447373040n); // Note : this BigInt is equal to l-1, this equivalent here to -1, to take the inverse of shared_secret, because mulPointEscalar only supports positive values for the second argument
     const plain_embedded = babyJub.addPoint([babyJub.F.e(C2.x),babyJub.F.e(C2.y)],shared_secret_inverse);
@@ -159,7 +172,8 @@ export function elgamalDecryptEmbedded(privateKey, C1, C2) {
  * @param {Point} P2 - Second point. &lt;strong style="color: red;">Warning:&lt;/strong> The developer must ensures that this point is on the Baby Jubjub curve.
  * @returns {Point} The resulting point from addition, i.e P1+P2.
  */
-export function addPoints(P1, P2) { // Used for (homomorphic) addition of baby jubjub (encrypted) points
+export async function addPoints(P1, P2) { // Used for (homomorphic) addition of baby jubjub (encrypted) points
+    const babyJub = await getBabyJub();
     const Psum = babyJub.addPoint([babyJub.F.e(P1.x),babyJub.F.e(P1.y)],[babyJub.F.e(P2.x),babyJub.F.e(P2.y)]);
     return {"x":babyJub.F.toObject(Psum[0]),
             "y":babyJub.F.toObject(Psum[1])};
@@ -168,10 +182,11 @@ export function addPoints(P1, P2) { // Used for (homomorphic) addition of baby j
 /**
  * Packs a public key, from uncompressed form (i.e a point on the big subgroup of Baby Jubjub) to a compressed form (i.e a BigInt)
  *
- * @param {Point} publicKey - The uncompressed/unpacked public key. &lt;strong style="color: red;">Warning:&lt;/strong> The developer must ensures that this point is on the Baby Jubjub curve.
+ * @param {Point} publicKey - The uncompressed/unpacked public key. &lt;strong style="color: red;">Warning:&lt;/strong> The developer must ensures that this point is on the Baby Jubjub curve, and more specifically in its big prime subgroup.
  * @returns {bigint} The resulting compressed/packed public key.
  */
-export function packPoint(publicKey){
+export async function packPoint(publicKey){
+    const babyJub = await getBabyJub();
     const packedPoint = babyJub.packPoint([babyJub.F.e(publicKey.x),babyJub.F.e(publicKey.y)]);
     const packedPublicKey = _uint8ArrayToBigIntNoModP(packedPoint);
     return packedPublicKey;
@@ -183,7 +198,8 @@ export function packPoint(publicKey){
  * @param {bigint} packedPublicKey - The packed public key. &lt;strong style="color: red;">Warning:&lt;/strong> The developer must ensures that it is a valid public key.
  * @returns {Point} The resulting compressed/packed public key.
  */
-export function unpackPoint(packedPublicKey){
+export async function unpackPoint(packedPublicKey){
+    const babyJub = await getBabyJub();
     const unpackedPoint = babyJub.unpackPoint(_bigIntToUint8ArrayNoModP(packedPublicKey));
     return {"x":babyJub.F.toObject(unpackedPoint[0]),
             "y":babyJub.F.toObject(unpackedPoint[1])};
@@ -202,8 +218,129 @@ export function bigintToBytes32(bigInt){
     }
     return '0x' + ((bigInt).toString(16)).padStart(64, '0');
 }
-//export function elgamalEncryptPacked
-//export function babyStepGiantStep</code></pre>
+
+/**
+ * This function is identical to `elgamalEncrypt` except that it takes the public key in packed form instead of its unpacked form.
+ * Encrypts a plaintext value between 0 and 2**40-1=1099511627775 for a specific packed publicKey. The returned ciphertext using ElGamal encryption is a pair of Baby Jubjub points (C1,C2).
+ *
+ * @param {bigint} packedPublicKey - The public key. &lt;strong style="color: red;">Warning:&lt;/strong> The developer must ensures that this point is a valid packed public key.
+ * @param {number} plaintext - The plaintext. &lt;strong style="color: red;">Warning:&lt;/strong> should be a number between 0 and 2**40-1=1099511627775 if you want to be able to decrypt it later using the baby-step giant-step algorithm.
+ * @returns {EncryptedValue} The encryption of plaintext. (C1,C2) is the ciphertext composed of two Baby Jubjub points, and randomness is the big integer used as randomness during encryption which should stay private for the encryptor.
+ */
+export async function elgamalEncryptPacked(packedPublicKey, plaintext) {  
+    const publicKey = await unpackPoint(packedPublicKey);
+    return await elgamalEncrypt(publicKey,plaintext);
+}
+
+/**
+ * This function solves the discrete logarithm problem by applying the baby-step giant-step algorithm (optimized implementation in WASM).
+ * It is used to convert the decrypted value from its embedded form to its original integer value.
+ * ⚠️ &lt;strong>Warning:&lt;/strong> the current implementation of the baby-step giant-step algorithm could be vulnerable to timing attacks, as the running time depends on the input. Please keep this in mind and apply extra caution if you wish to use it in production.
+ *
+ * @param {Point} decryptedEmbedded - The decrypted value in embedded form, i.e typically the point outputed by `elgamalDecryptEmbedded`.
+ * @param {number} numberOfWorkers - The number of workers used for parallelization. For faster computation we recommend between 5 to 8 workers, if the client has enough cores.
+ * @returns {number} The integer corresponding the original unencrypted value. &lt;strong style="color: red;">Warning:&lt;/strong> The decryption will fail if the original value was outside the [0,2**40-1] range or if a wrong private key was used during the first step of decryption.
+ */
+export async function compute_dlog(decryptedEmbedded, numberOfWorkers) {
+    let result;
+
+    if (typeof window === 'undefined') { // case nodejs backend
+        const module = await import('./babygiant/pkg_nodejs/babygiant.js');
+        const do_compute_dlog = module.do_compute_dlog;
+
+        const { Worker } = await import('worker_threads');
+        const __filename = fileURLToPath(import.meta.url);
+        const __dirname = dirname(__filename);
+
+        function pathResolve(relativePath) {
+            return resolve(__dirname, relativePath);
+        }
+
+        const workerFilePath = pathResolve('./worker_babygiant_node.js');
+
+        const promises = [];
+        const workers = [];
+        const n = 1048576;
+        const chunkSize = Math.ceil(n / numberOfWorkers);
+        let num_killed = 0;
+        for (let i = 0; i &lt; numberOfWorkers; i++) {
+            
+            promises.push(new Promise((resolve, ) => {
+                const myWorker = new Worker(workerFilePath);
+                workers.push(myWorker);
+                myWorker.on('message', (data) => {
+                    myWorker.terminate(); // Close worker once done
+                    num_killed += 1;
+
+                    if (data !== "dl_not_found") {
+                        result = data;
+                        for (const worker of workers) {
+                            worker.terminate();
+                        }
+                        resolve();
+                    } else if (num_killed === numberOfWorkers) {
+                        throw new Error("Discrete Log Not Found! Ensure private key is correct and original value is between 0 and max(uint40).");
+                    }
+                });
+                const start = i * chunkSize;
+                const end = Math.min(n, start + chunkSize);
+                myWorker.postMessage({ Cx: bigintToBytes32(decryptedEmbedded.x), Cy: bigintToBytes32(decryptedEmbedded.y), min_range: start, max_range: end });
+            }));
+        }
+    
+            await Promise.any(promises);
+            return Number(result);
+
+        } else { // case in browser
+            const promises = [];
+            const n = 1048576;
+            const chunkSize = Math.ceil(n / numberOfWorkers);
+            const workers = [];
+            let num_killed = 0;
+            for (let i = 0; i &lt; numberOfWorkers; i++) {
+                promises.push(new Promise((resolve, ) => {
+                    const myWorker = new Worker(new URL('worker_babygiant.js', import.meta.url));
+                    workers.push(myWorker);
+                    myWorker.onmessage = function(event) {
+                        myWorker.terminate(); // Close worker once done
+                        num_killed+=1;
+                        if (event.data !== "dl_not_found") {
+                            result = event.data;
+                            
+                            for (const worker of workers) {
+                                worker.terminate();
+                            }
+                            resolve();
+                        } else if (num_killed === numberOfWorkers) { // If it's the last worker and still not found
+                            throw new Error("Discrete Log Not Found! Ensure private key is correct and original value is between 0 and max(uint40).");
+                        } 
+                    };
+                    const start = i * chunkSize;
+                    const end = Math.min(n, start + chunkSize);
+                    myWorker.postMessage({ Cx: bigintToBytes32(decryptedEmbedded.x), Cy: bigintToBytes32(decryptedEmbedded.y), min_range: start, max_range: end });
+                }));
+            }
+        
+            await Promise.any(promises);
+            return Number(result);
+    }
+}
+
+/**
+ * This function is identical to `elgamalDecryptEmbedded` followed by `compute_dlog`, so it returns directly the original unencrypted value as an integer, instead of its embedding on Baby Jubjub.
+ * ⚠️ &lt;strong>Warning:&lt;/strong> the current implementation of `compute_dlog` could be vulnerable to timing attacks, as the running time depends on the input. Please keep this in mind and apply extra caution if you wish to use it in production.
+ *
+ * @param {bigint} privateKey - The privatekey key. &lt;strong style="color: red;">Warning:&lt;/strong> Please make sure to use the correct private key, or else the decryption will fail or lead to an incorrect result.
+ * @param {Point} C1 - the first part of the ciphertext, a point in Baby Jubjub. Same notations as on {@link https://en.wikipedia.org/wiki/ElGamal_encryption|wikipedia}.
+ * @param {Point} C2 - the second part of the ciphertext, a point in Baby Jubjub. Same notations as on {@link https://en.wikipedia.org/wiki/ElGamal_encryption|wikipedia}.
+ * @param {number} numberOfWorkers - The number of workers used for parallelization during the computation of the discrete logarithm. For faster computation we recommend between 5 to 8 workers, if the client has enough cores.
+ * @returns {number} The integer corresponding the original unencrypted value. &lt;strong style="color: red;">Warning:&lt;/strong> The decryption will fail if the original value was outside the [0,2**40-1] range or if a wrong private key was used.
+ */
+export async function elgamalDecrypt(privateKey, C1, C2, numberOfWorkers){
+    const decryptedEmbedded = await elgamalDecryptEmbedded(privateKey, C1, C2);
+    const decrypted = await compute_dlog(decryptedEmbedded, numberOfWorkers);
+    return decrypted;
+}</code></pre>
         </article>
     </section>
 
@@ -213,13 +350,13 @@ export function bigintToBytes32(bigInt){
 </div>
 
 <nav>
-    <h2><a href="index.html">Home</a></h2><h3>Global</h3><ul><li><a href="global.html#addPoints">addPoints</a></li><li><a href="global.html#bigintToBytes32">bigintToBytes32</a></li><li><a href="global.html#elgamalDecryptEmbedded">elgamalDecryptEmbedded</a></li><li><a href="global.html#elgamalEncrypt">elgamalEncrypt</a></li><li><a href="global.html#generatePrivateAndPublicKey">generatePrivateAndPublicKey</a></li><li><a href="global.html#packPoint">packPoint</a></li><li><a href="global.html#privateToPublicKey">privateToPublicKey</a></li><li><a href="global.html#unpackPoint">unpackPoint</a></li></ul>
+    <h2><a href="index.html">Home</a></h2><h3>Global</h3><ul><li><a href="global.html#addPoints">addPoints</a></li><li><a href="global.html#bigintToBytes32">bigintToBytes32</a></li><li><a href="global.html#compute_dlog">compute_dlog</a></li><li><a href="global.html#elgamalDecrypt">elgamalDecrypt</a></li><li><a href="global.html#elgamalDecryptEmbedded">elgamalDecryptEmbedded</a></li><li><a href="global.html#elgamalEncrypt">elgamalEncrypt</a></li><li><a href="global.html#elgamalEncryptPacked">elgamalEncryptPacked</a></li><li><a href="global.html#generatePrivateAndPublicKey">generatePrivateAndPublicKey</a></li><li><a href="global.html#packPoint">packPoint</a></li><li><a href="global.html#privateToPublicKey">privateToPublicKey</a></li><li><a href="global.html#unpackPoint">unpackPoint</a></li></ul>
 </nav>
 
 <br class="clear">
 
 <footer>
-    Documentation generated by <a href="https://github.com/jsdoc/jsdoc">JSDoc 4.0.2</a> on Fri Oct 27 2023 12:02:19 GMT+0200 (heure d’été d’Europe centrale)
+    Documentation generated by <a href="https://github.com/jsdoc/jsdoc">JSDoc 4.0.2</a> on Tue Oct 31 2023 02:32:54 GMT+0100 (heure normale d’Europe centrale)
 </footer>
 
 <script> prettyPrint(); </script>

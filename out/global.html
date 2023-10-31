@@ -228,7 +228,7 @@
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="index.js.html">index.js</a>, <a href="index.js.html#line134">line 134</a>
+        <a href="index.js.html">index.js</a>, <a href="index.js.html#line147">line 147</a>
     </li></ul></dd>
     
 
@@ -387,7 +387,7 @@
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="index.js.html">index.js</a>, <a href="index.js.html#line170">line 170</a>
+        <a href="index.js.html">index.js</a>, <a href="index.js.html#line186">line 186</a>
     </li></ul></dd>
     
 
@@ -445,7 +445,7 @@
     
 
     
-    <h4 class="name" id="elgamalDecryptEmbedded"><span class="type-signature"></span>elgamalDecryptEmbedded<span class="signature">(privateKey, C1, C2)</span><span class="type-signature"> &rarr; {<a href="global.html#Point">Point</a>}</span></h4>
+    <h4 class="name" id="compute_dlog"><span class="type-signature"></span>compute_dlog<span class="signature">(decryptedEmbedded, numberOfWorkers)</span><span class="type-signature"> &rarr; {number}</span></h4>
     
 
     
@@ -453,7 +453,192 @@
 
 
 <div class="description">
-    Decrypts the ciphertext in an embedded form, i.e as a point on the Baby Jubjub curve defined by G^(plaintext), G is the generator point. You would still need to appy the Baby-step Giant-step algorithm to get back the original unencrypted value.
+    This function solves the discrete logarithm problem by applying the baby-step giant-step algorithm (optimized implementation in WASM).
+It is used to convert the decrypted value from its embedded form to its original integer value.
+⚠️ <strong>Warning:</strong> the current implementation of the baby-step giant-step algorithm could be vulnerable to timing attacks, as the running time depends on the input. Please keep this in mind and apply extra caution if you wish to use it in production.
+</div>
+
+
+
+
+
+
+
+
+
+    <h5>Parameters:</h5>
+    
+
+<table class="params">
+    <thead>
+    <tr>
+        
+        <th>Name</th>
+        
+
+        <th>Type</th>
+
+        
+
+        
+
+        <th class="last">Description</th>
+    </tr>
+    </thead>
+
+    <tbody>
+    
+
+        <tr>
+            
+                <td class="name"><code>decryptedEmbedded</code></td>
+            
+
+            <td class="type">
+            
+                
+<span class="param-type"><a href="global.html#Point">Point</a></span>
+
+
+            
+            </td>
+
+            
+
+            
+
+            <td class="description last">The decrypted value in embedded form, i.e typically the point outputed by `elgamalDecryptEmbedded`.</td>
+        </tr>
+
+    
+
+        <tr>
+            
+                <td class="name"><code>numberOfWorkers</code></td>
+            
+
+            <td class="type">
+            
+                
+<span class="param-type">number</span>
+
+
+            
+            </td>
+
+            
+
+            
+
+            <td class="description last">The number of workers used for parallelization. For faster computation we recommend between 5 to 8 workers, if the client has enough cores.</td>
+        </tr>
+
+    
+    </tbody>
+</table>
+
+
+
+
+
+
+<dl class="details">
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+    <dt class="tag-source">Source:</dt>
+    <dd class="tag-source"><ul class="dummy"><li>
+        <a href="index.js.html">index.js</a>, <a href="index.js.html#line216">line 216</a>
+    </li></ul></dd>
+    
+
+    
+
+    
+
+    
+</dl>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<h5>Returns:</h5>
+
+        
+<div class="param-desc">
+    The integer corresponding the original unencrypted value. <strong style="color: red;">Warning:</strong> The decryption will fail if the original value was outside the [0,2**40-1] range or if a wrong private key was used during the first step of decryption.
+</div>
+
+
+
+<dl>
+    <dt>
+        Type
+    </dt>
+    <dd>
+        
+<span class="param-type">number</span>
+
+
+    </dd>
+</dl>
+
+    
+
+
+
+
+
+        
+            
+
+    
+
+    
+    <h4 class="name" id="elgamalDecrypt"><span class="type-signature"></span>elgamalDecrypt<span class="signature">(privateKey, C1, C2, numberOfWorkers)</span><span class="type-signature"> &rarr; {number}</span></h4>
+    
+
+    
+
+
+
+<div class="description">
+    This function is identical to `elgamalDecryptEmbedded` followed by `compute_dlog`, so it returns directly the original unencrypted value as an integer, instead of its embedding on Baby Jubjub.
+⚠️ <strong>Warning:</strong> the current implementation of `compute_dlog` could be vulnerable to timing attacks, as the running time depends on the input. Please keep this in mind and apply extra caution if you wish to use it in production.
 </div>
 
 
@@ -505,7 +690,236 @@
 
             
 
-            <td class="description last">The privatekey key.</td>
+            <td class="description last">The privatekey key. <strong style="color: red;">Warning:</strong> Please make sure to use the correct private key, or else the decryption will fail or lead to an incorrect result.</td>
+        </tr>
+
+    
+
+        <tr>
+            
+                <td class="name"><code>C1</code></td>
+            
+
+            <td class="type">
+            
+                
+<span class="param-type"><a href="global.html#Point">Point</a></span>
+
+
+            
+            </td>
+
+            
+
+            
+
+            <td class="description last">the first part of the ciphertext, a point in Baby Jubjub. Same notations as on <a href="https://en.wikipedia.org/wiki/ElGamal_encryption">wikipedia</a>.</td>
+        </tr>
+
+    
+
+        <tr>
+            
+                <td class="name"><code>C2</code></td>
+            
+
+            <td class="type">
+            
+                
+<span class="param-type"><a href="global.html#Point">Point</a></span>
+
+
+            
+            </td>
+
+            
+
+            
+
+            <td class="description last">the second part of the ciphertext, a point in Baby Jubjub. Same notations as on <a href="https://en.wikipedia.org/wiki/ElGamal_encryption">wikipedia</a>.</td>
+        </tr>
+
+    
+
+        <tr>
+            
+                <td class="name"><code>numberOfWorkers</code></td>
+            
+
+            <td class="type">
+            
+                
+<span class="param-type">number</span>
+
+
+            
+            </td>
+
+            
+
+            
+
+            <td class="description last">The number of workers used for parallelization during the computation of the discrete logarithm. For faster computation we recommend between 5 to 8 workers, if the client has enough cores.</td>
+        </tr>
+
+    
+    </tbody>
+</table>
+
+
+
+
+
+
+<dl class="details">
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+    <dt class="tag-source">Source:</dt>
+    <dd class="tag-source"><ul class="dummy"><li>
+        <a href="index.js.html">index.js</a>, <a href="index.js.html#line311">line 311</a>
+    </li></ul></dd>
+    
+
+    
+
+    
+
+    
+</dl>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<h5>Returns:</h5>
+
+        
+<div class="param-desc">
+    The integer corresponding the original unencrypted value. <strong style="color: red;">Warning:</strong> The decryption will fail if the original value was outside the [0,2**40-1] range or if a wrong private key was used.
+</div>
+
+
+
+<dl>
+    <dt>
+        Type
+    </dt>
+    <dd>
+        
+<span class="param-type">number</span>
+
+
+    </dd>
+</dl>
+
+    
+
+
+
+
+
+        
+            
+
+    
+
+    
+    <h4 class="name" id="elgamalDecryptEmbedded"><span class="type-signature"></span>elgamalDecryptEmbedded<span class="signature">(privateKey, C1, C2)</span><span class="type-signature"> &rarr; {<a href="global.html#Point">Point</a>}</span></h4>
+    
+
+    
+
+
+
+<div class="description">
+    Decrypts the ciphertext in an embedded form, i.e as a point on the Baby Jubjub curve defined by G^(plaintext), G is the generator point. 
+You would still need to appy the Baby-step Giant-step algorithm via the `compute_dlog` function, to get back the original unencrypted value.
+</div>
+
+
+
+
+
+
+
+
+
+    <h5>Parameters:</h5>
+    
+
+<table class="params">
+    <thead>
+    <tr>
+        
+        <th>Name</th>
+        
+
+        <th>Type</th>
+
+        
+
+        
+
+        <th class="last">Description</th>
+    </tr>
+    </thead>
+
+    <tbody>
+    
+
+        <tr>
+            
+                <td class="name"><code>privateKey</code></td>
+            
+
+            <td class="type">
+            
+                
+<span class="param-type">bigint</span>
+
+
+            
+            </td>
+
+            
+
+            
+
+            <td class="description last">The privatekey key. <strong style="color: red;">Warning:</strong> Please make sure to use the correct private key, or else the decryption will lead to an incorrect result.</td>
         </tr>
 
     
@@ -592,7 +1006,7 @@
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="index.js.html">index.js</a>, <a href="index.js.html#line119">line 119</a>
+        <a href="index.js.html">index.js</a>, <a href="index.js.html#line131">line 131</a>
     </li></ul></dd>
     
 
@@ -774,7 +1188,7 @@
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="index.js.html">index.js</a>, <a href="index.js.html#line91">line 91</a>
+        <a href="index.js.html">index.js</a>, <a href="index.js.html#line101">line 101</a>
     </li></ul></dd>
     
 
@@ -803,7 +1217,190 @@
 
         
 <div class="param-desc">
-    The encryption of plaintext. (C1,C2) is the ciphertext composed of two Baby Jubjub points, and randomness is the big integer used as randomness during encryption which should stay private for the encrypter.
+    The encryption of plaintext. (C1,C2) is the ciphertext composed of two Baby Jubjub points, and randomness is the big integer used as randomness during encryption which should stay private for the encryptor.
+</div>
+
+
+
+<dl>
+    <dt>
+        Type
+    </dt>
+    <dd>
+        
+<span class="param-type"><a href="global.html#EncryptedValue">EncryptedValue</a></span>
+
+
+    </dd>
+</dl>
+
+    
+
+
+
+
+
+        
+            
+
+    
+
+    
+    <h4 class="name" id="elgamalEncryptPacked"><span class="type-signature"></span>elgamalEncryptPacked<span class="signature">(packedPublicKey, plaintext)</span><span class="type-signature"> &rarr; {<a href="global.html#EncryptedValue">EncryptedValue</a>}</span></h4>
+    
+
+    
+
+
+
+<div class="description">
+    This function is identical to `elgamalEncrypt` except that it takes the public key in packed form instead of its unpacked form.
+Encrypts a plaintext value between 0 and 2**40-1=1099511627775 for a specific packed publicKey. The returned ciphertext using ElGamal encryption is a pair of Baby Jubjub points (C1,C2).
+</div>
+
+
+
+
+
+
+
+
+
+    <h5>Parameters:</h5>
+    
+
+<table class="params">
+    <thead>
+    <tr>
+        
+        <th>Name</th>
+        
+
+        <th>Type</th>
+
+        
+
+        
+
+        <th class="last">Description</th>
+    </tr>
+    </thead>
+
+    <tbody>
+    
+
+        <tr>
+            
+                <td class="name"><code>packedPublicKey</code></td>
+            
+
+            <td class="type">
+            
+                
+<span class="param-type">bigint</span>
+
+
+            
+            </td>
+
+            
+
+            
+
+            <td class="description last">The public key. <strong style="color: red;">Warning:</strong> The developer must ensures that this point is a valid packed public key.</td>
+        </tr>
+
+    
+
+        <tr>
+            
+                <td class="name"><code>plaintext</code></td>
+            
+
+            <td class="type">
+            
+                
+<span class="param-type">number</span>
+
+
+            
+            </td>
+
+            
+
+            
+
+            <td class="description last">The plaintext. <strong style="color: red;">Warning:</strong> should be a number between 0 and 2**40-1=1099511627775 if you want to be able to decrypt it later using the baby-step giant-step algorithm.</td>
+        </tr>
+
+    
+    </tbody>
+</table>
+
+
+
+
+
+
+<dl class="details">
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+    <dt class="tag-source">Source:</dt>
+    <dd class="tag-source"><ul class="dummy"><li>
+        <a href="index.js.html">index.js</a>, <a href="index.js.html#line202">line 202</a>
+    </li></ul></dd>
+    
+
+    
+
+    
+
+    
+</dl>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<h5>Returns:</h5>
+
+        
+<div class="param-desc">
+    The encryption of plaintext. (C1,C2) is the ciphertext composed of two Baby Jubjub points, and randomness is the big integer used as randomness during encryption which should stay private for the encryptor.
 </div>
 
 
@@ -884,7 +1481,7 @@
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="index.js.html">index.js</a>, <a href="index.js.html#line77">line 77</a>
+        <a href="index.js.html">index.js</a>, <a href="index.js.html#line87">line 87</a>
     </li></ul></dd>
     
 
@@ -1002,7 +1599,7 @@
 
             
 
-            <td class="description last">The uncompressed/unpacked public key. <strong style="color: red;">Warning:</strong> The developer must ensures that this point is on the Baby Jubjub curve.</td>
+            <td class="description last">The uncompressed/unpacked public key. <strong style="color: red;">Warning:</strong> The developer must ensures that this point is on the Baby Jubjub curve, and more specifically in its big prime subgroup.</td>
         </tr>
 
     
@@ -1043,7 +1640,7 @@
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="index.js.html">index.js</a>, <a href="index.js.html#line146">line 146</a>
+        <a href="index.js.html">index.js</a>, <a href="index.js.html#line160">line 160</a>
     </li></ul></dd>
     
 
@@ -1202,7 +1799,7 @@
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="index.js.html">index.js</a>, <a href="index.js.html#line66">line 66</a>
+        <a href="index.js.html">index.js</a>, <a href="index.js.html#line75">line 75</a>
     </li></ul></dd>
     
 
@@ -1361,7 +1958,7 @@
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="index.js.html">index.js</a>, <a href="index.js.html#line158">line 158</a>
+        <a href="index.js.html">index.js</a>, <a href="index.js.html#line173">line 173</a>
     </li></ul></dd>
     
 
@@ -1530,7 +2127,7 @@
 
             
 
-            <td class="description last">randomness parameter. <strong style="color: red;">Warning:</strong> should stay private, but we could use it as a private input in the circuits.</td>
+            <td class="description last">randomness parameter. <strong style="color: red;">Warning:</strong> should stay private and owned by the encryptor, but he could use it as a private input in the circuits.</td>
         </tr>
 
     
@@ -1569,7 +2166,7 @@
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="index.js.html">index.js</a>, <a href="index.js.html#line17">line 17</a>
+        <a href="index.js.html">index.js</a>, <a href="index.js.html#line19">line 19</a>
     </li></ul></dd>
     
 
@@ -1712,7 +2309,7 @@
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="index.js.html">index.js</a>, <a href="index.js.html#line11">line 11</a>
+        <a href="index.js.html">index.js</a>, <a href="index.js.html#line13">line 13</a>
     </li></ul></dd>
     
 
@@ -1855,7 +2452,7 @@
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="index.js.html">index.js</a>, <a href="index.js.html#line5">line 5</a>
+        <a href="index.js.html">index.js</a>, <a href="index.js.html#line7">line 7</a>
     </li></ul></dd>
     
 
@@ -1885,13 +2482,13 @@
 </div>
 
 <nav>
-    <h2><a href="index.html">Home</a></h2><h3>Global</h3><ul><li><a href="global.html#addPoints">addPoints</a></li><li><a href="global.html#bigintToBytes32">bigintToBytes32</a></li><li><a href="global.html#elgamalDecryptEmbedded">elgamalDecryptEmbedded</a></li><li><a href="global.html#elgamalEncrypt">elgamalEncrypt</a></li><li><a href="global.html#generatePrivateAndPublicKey">generatePrivateAndPublicKey</a></li><li><a href="global.html#packPoint">packPoint</a></li><li><a href="global.html#privateToPublicKey">privateToPublicKey</a></li><li><a href="global.html#unpackPoint">unpackPoint</a></li></ul>
+    <h2><a href="index.html">Home</a></h2><h3>Global</h3><ul><li><a href="global.html#addPoints">addPoints</a></li><li><a href="global.html#bigintToBytes32">bigintToBytes32</a></li><li><a href="global.html#compute_dlog">compute_dlog</a></li><li><a href="global.html#elgamalDecrypt">elgamalDecrypt</a></li><li><a href="global.html#elgamalDecryptEmbedded">elgamalDecryptEmbedded</a></li><li><a href="global.html#elgamalEncrypt">elgamalEncrypt</a></li><li><a href="global.html#elgamalEncryptPacked">elgamalEncryptPacked</a></li><li><a href="global.html#generatePrivateAndPublicKey">generatePrivateAndPublicKey</a></li><li><a href="global.html#packPoint">packPoint</a></li><li><a href="global.html#privateToPublicKey">privateToPublicKey</a></li><li><a href="global.html#unpackPoint">unpackPoint</a></li></ul>
 </nav>
 
 <br class="clear">
 
 <footer>
-    Documentation generated by <a href="https://github.com/jsdoc/jsdoc">JSDoc 4.0.2</a> on Fri Oct 27 2023 12:02:19 GMT+0200 (heure d’été d’Europe centrale)
+    Documentation generated by <a href="https://github.com/jsdoc/jsdoc">JSDoc 4.0.2</a> on Tue Oct 31 2023 02:32:54 GMT+0100 (heure normale d’Europe centrale)
 </footer>
 
 <script> prettyPrint(); </script>
