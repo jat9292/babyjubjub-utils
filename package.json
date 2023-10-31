@@ -5,7 +5,9 @@
   "main": "index.js",
   "scripts": {
     "test": "mocha",
-    "docs": "npx documentation build index.js -f md --shallow > README2.md"
+    "docs": "npx documentation build index.js -f md --shallow > README2.md",
+    "wasm-browser":  "cd babygiant && wasm-pack build --target nodejs && rm -rf target",
+    "wasm-nodejs": "cd babygiant && wasm-pack build --out-dir pkg_nodejs --target nodejs && rm -rf target"
   },
   "repository": {
     "type": "git",
